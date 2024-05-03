@@ -1,6 +1,7 @@
 require('dotenv').config()
 const express = require('express')
 const fs = require('fs')
+const http = require('http')
 const https = require('https')
 const cookieParser = require('cookie-parser')
 const cors = require('cors')
@@ -8,11 +9,12 @@ const jwt = require('jsonwebtoken')
 const path = require('path')
 
 const app = express()
-const PORT = 3001
+const PORT = process.env.PORT
+const USE_SSL = process.env.USE_SSL === 'true'
 
 app.use(
   cors({
-    origin: 'http://localhost:5173', //  React app
+    origin: process.env.REACT_APP,
     credentials: true
   })
 )
@@ -71,7 +73,7 @@ app.post('/login', (req, res) => {
 
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      secure: true,
+      secure: USE_SSL,
       sameSite: 'lax',
       path: '/',
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
@@ -91,7 +93,7 @@ app.post('/login', (req, res) => {
 app.post('/logout', (req, res) => {
   res.cookie('refreshToken', '', {
     httpOnly: true,
-    secure: true,
+    secure: USE_SSL,
     sameSite: 'lax',
     expires: new Date(0)
   });
@@ -102,12 +104,12 @@ app.post('/logout', (req, res) => {
 app.post('/public/refresh', (req, res) => {
   const { refreshToken } = req.cookies
   if (!refreshToken) {
-    return res.sendStatus(401) // No refresh token provided
+    return res.sendStatus(401)
   }
 
   jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET, (err, user) => {
     if (err) {
-      return res.sendStatus(403) // Invalid refresh token
+      return res.sendStatus(403)
     }
 
     const newAccessToken = jwt.sign(
@@ -136,6 +138,12 @@ const sslOptions = {
   cert: fs.readFileSync(path.join(__dirname, 'localhost.pem'))
 }
 
-https.createServer(sslOptions, app).listen(PORT, () => {
-  console.log(`HTTPS Server running on https://localhost:${PORT}`)
-})
+if (USE_SSL) {
+  https.createServer(sslOptions, app).listen(PORT, () => {
+    console.log(`HTTPS Server running on https://localhost:${PORT}`);
+  });
+} else {
+  http.createServer(app).listen(PORT, () => {
+    console.log(`HTTP Server running on http://localhost:${PORT}`);
+  });
+}
